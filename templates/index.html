@@ -1,6 +1,15 @@
+<!doctype html>
 <html>
-    <body style = "background-color:black">
+  <body>
+    <h1>Ask the local LLM about a file</h1>
 
-    </body>
-    <p style = "color:white">Hello!</p>
+    <form method="post" enctype="multipart/form-data">
+      <button type="submit">Upload and analyze</button>
+    </form>
+
+    {% if answer %}
+      <h2>Answer</h2>
+      <pre style="white-space: pre-wrap">{{ answer }}</pre>
+    {% endif %}
+  </body>
 </html>
