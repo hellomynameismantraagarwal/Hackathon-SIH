@@ -1,15 +1,109 @@
 <!doctype html>
-<html>
-  <body>
-    <h1>Ask the local LLM about a file</h1>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quiz Generator</title>
 
-    <form method="post" enctype="multipart/form-data">
-      <button type="submit">Upload and analyze</button>
-    </form>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    >
 
-    {% if answer %}
-      <h2>Answer</h2>
-      <pre style="white-space: pre-wrap">{{ answer }}</pre>
-    {% endif %}
+    <style>
+      body {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #eef4ff, #f8f9fa);
+      }
+
+      .app-card {
+        border: 0;
+        border-radius: 1.25rem;
+        box-shadow: 0 1rem 3rem rgba(31, 55, 100, 0.12);
+      }
+
+      .answer-box {
+        white-space: pre-wrap;
+        line-height: 1.7;
+      }
+    </style>
+  </head>
+
+  <body class="d-flex align-items-center py-5">
+    <main class="container" style="max-width: 850px;">
+      <div class="text-center mb-4">
+        <span class="badge text-bg-primary rounded-pill px-3 py-2">
+          Setting the computer on fire Inc
+        </span>
+        <h1 class="display-6 fw-bold mt-3 mb-2">PDF Quiz Generator</h1>
+        <p class="text-secondary mb-0">
+          Upload a document and turn it into practice MCQs.
+        </p>
+      </div>
+
+      <section class="card app-card">
+        <div class="card-body p-4 p-md-5">
+          <form id="upload-form" method="post" enctype="multipart/form-data">
+            <label for="file" class="form-label fw-semibold">
+              Choose a document
+            </label>
+
+            <input
+              class="form-control form-control-lg"
+              id="file"
+              type="file"
+              name="file"
+              accept=".txt,.md,.py,.csv,.pdf"
+              multiple
+              required
+            >
+
+            <div class="form-text mb-4">
+              Accepted: PDF, TXT, Markdown, Python, or CSV. Maximum size: 5 MB.
+            </div>
+
+            <button id="submit-button" class="btn btn-primary btn-lg w-100" type="submit">
+              Generate quiz
+            </button>
+
+            <div id="loading" class="text-center mt-4 d-none">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Generating quiz…</span>
+              </div>
+              <p class="text-secondary mt-2 mb-0">
+                Reading your document and creating questions…
+              </p>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {% if answer %}
+        <section class="card app-card mt-4">
+          <div class="card-header bg-white border-0 pt-4 px-4 px-md-5">
+            <h2 class="h4 fw-bold mb-1">Your quiz</h2>
+            <p class="text-secondary mb-0">Review the questions, then check the answers.</p>
+          </div>
+
+          <div class="card-body px-4 px-md-5 pb-5">
+            <div class="answer-box">{{ answer }}</div>
+          </div>
+        </section>
+      {% endif %}
+    </main>
+
+    <script>
+      const form = document.getElementById("upload-form");
+      const button = document.getElementById("submit-button");
+      const loading = document.getElementById("loading");
+
+      form.addEventListener("submit", () => {
+        button.disabled = true;
+        button.textContent = "Generating…";
+        loading.classList.remove("d-none");
+      });
+    </script>
   </body>
 </html>
