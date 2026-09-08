@@ -1,10 +1,12 @@
 from io import BytesIO
+import json
 
 from flask import Flask, request, render_template
 from werkzeug.utils import secure_filename
 from openai import OpenAI
 from waitress import serve
 from pypdf import PdfReader
+
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
@@ -19,7 +21,7 @@ MODEL = "prism-ml/bonsai-27b"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    answer = None
+    quiz = None
 
     if request.method == "POST":
         uploaded_files = request.files.getlist("file")
@@ -37,15 +39,24 @@ def index():
                 continue
 
             filename = secure_filename(uploaded.filename)
+
+            if "." not in filename:
+                return f"Unsupported file type: {filename}", 400
+
             extension = filename.rsplit(".", 1)[-1].lower()
 
             if extension in ("txt", "md", "py", "csv"):
-                file_text = uploaded.read().decode("utf-8", errors="replace")
+                file_text = uploaded.read().decode(
+                    "utf-8",
+                    errors="replace"
+                )
 
             elif extension == "pdf":
                 reader = PdfReader(BytesIO(uploaded.read()))
+
                 file_text = "\n".join(
-                    page.extract_text() or "" for page in reader.pages
+                    page.extract_text() or ""
+                    for page in reader.pages
                 )
 
             else:
@@ -53,6 +64,7 @@ def index():
 
             if file_text.strip():
                 filenames.append(filename)
+
                 document_parts.append(
                     f"\n\n--- START OF FILE: {filename} ---\n\n"
                     f"{file_text}"
@@ -60,7 +72,10 @@ def index():
                 )
 
         if not document_parts:
-            return "No readable text was found in the uploaded files.", 400
+            return (
+                "No readable text was found in the uploaded files.",
+                400
+            )
 
         try:
             response = client.chat.completions.create(
@@ -69,32 +84,51 @@ def index():
                     {
                         "role": "system",
                         "content": (
-                            "Create a concise, student-friendly MCQ quiz directly "
-                            "from the supplied documents. Do not use extended reasoning."
+                            "You are a quiz generator. "
+                            "Create concise, student-friendly MCQs "
+                            "ONLY from the supplied documents. "
+                            "Do not use outside knowledge."
                         ),
                     },
                     {
                         "role": "user",
                         "content": f"""
-Create 15 multiple-choice questions that cover all uploaded documents.
+Create exactly 15 multiple-choice questions based on ALL
+uploaded documents.
 
-For each question, use exactly this format:
+Return ONLY valid JSON.
 
-Question 1: ...
-A. ...
-B. ...
-C. ...
-D. ...
+Use exactly this structure:
 
-At the end, provide:
+{{
+  "questions": [
+    {{
+      "question": "Question text",
+      "options": {{
+        "A": "Option A",
+        "B": "Option B",
+        "C": "Option C",
+        "D": "Option D"
+      }},
+      "answer": "A",
+      "explanation": "Short explanation"
+    }}
+  ]
+}}
 
----
-Question 1: ...
-Answer: A
-Explanation: ...
----
+Rules:
+- Exactly 15 questions.
+- Every question must have exactly 4 options.
+- The answer must be exactly one of: A, B, C, D.
+- Explanations should be short and student-friendly.
+- Questions must be based only on the uploaded documents.
+- Cover all uploaded documents as much as possible.
+- Do not include Markdown.
+- Do not include ```json.
+- Return ONLY the JSON object.
 
-Uploaded files: {", ".join(filenames)}
+Uploaded files:
+{", ".join(filenames)}
 
 Documents:
 {"".join(document_parts)}
@@ -102,7 +136,7 @@ Documents:
                     },
                 ],
                 temperature=0.2,
-                max_tokens=1800,
+                max_tokens=3000,
                 extra_body={
                     "chat_template_kwargs": {
                         "enable_thinking": False
@@ -110,16 +144,76 @@ Documents:
                 },
             )
 
-            answer = response.choices[0].message.content
+            raw_answer = response.choices[0].message.content
 
-            if not answer:
-                answer = "Model ne empty response diya. LM Studio model/server settings check karein."
+            if not raw_answer:
+                return "Model returned an empty response.", 500
+
+            # Remove accidental markdown fences if the model adds them
+            raw_answer = raw_answer.strip()
+
+            if raw_answer.startswith("```"):
+                raw_answer = raw_answer.replace("```json", "", 1)
+                raw_answer = raw_answer.replace("```", "")
+                raw_answer = raw_answer.strip()
+
+            quiz = json.loads(raw_answer)
+
+            # Basic validation
+            if "questions" not in quiz:
+                raise ValueError("Invalid quiz format.")
+
+            if len(quiz["questions"]) != 15:
+                raise ValueError(
+                    f"Expected 15 questions, got {len(quiz['questions'])}."
+                )
+
+            for question in quiz["questions"]:
+                if not all(
+                    key in question
+                    for key in (
+                        "question",
+                        "options",
+                        "answer",
+                        "explanation",
+                    )
+                ):
+                    raise ValueError(
+                        "One or more questions have missing fields."
+                    )
+
+                if set(question["options"].keys()) != {
+                    "A", "B", "C", "D"
+                }:
+                    raise ValueError(
+                        "Every question must have A, B, C and D options."
+                    )
+
+                if question["answer"] not in {
+                    "A", "B", "C", "D"
+                }:
+                    raise ValueError(
+                        "Invalid correct answer."
+                    )
+
+        except json.JSONDecodeError as error:
+            return (
+                f"Model did not return valid JSON: {error}",
+                500
+            )
 
         except Exception as error:
-            answer = f"Quiz generate nahi ho saka: {error}"
+            return f"Quiz generation failed: {error}", 500
 
-    return render_template("index.html", answer=answer)
+    return render_template(
+        "index.html",
+        quiz=quiz
+    )
 
 
 if __name__ == "__main__":
-    serve(app, host="0.0.0.0", port=5001)
+    serve(
+        app,
+        host="0.0.0.0",
+        port=5001
+    )
