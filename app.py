@@ -19,31 +19,48 @@ MODEL = "prism-ml/bonsai-27b"
 @app.route("/", methods=["GET", "POST"])
 def index():
     answer = None
-
     if request.method == "POST":
-        uploaded = request.files.get("file")
+        uploaded_files = request.files.getlist("file")
+        if not uploaded_files or all(
+            uploaded.filename == ""
+            for uploaded in uploaded_files
+        ):
+            return "Please choose one or more files.", 400
+        document_parts = []
+        filenames = []
+        for uploaded in uploaded_files:
+            if uploaded.filename == "":
+                continue
+            filename = secure_filename(uploaded.filename)
+            extension = filename.rsplit(".", 1)[-1].lower()
+            if extension in ("txt", "md", "py", "csv"):
+                file_text = uploaded.read().decode(
+                    "utf-8",
+                    errors="replace"
+                )
 
-        if not uploaded or uploaded.filename == "":
-            return "Please choose a file.", 400
+            elif extension == "pdf":
+                reader = PdfReader(BytesIO(uploaded.read()))
+                file_text = "\n".join(
+                    page.extract_text() or ""
+                    for page in reader.pages
+                )
 
-        filename = secure_filename(uploaded.filename)
-        extension = filename.rsplit(".", 1)[-1].lower()
+            else:
+                return f"Unsupported file type: {filename}", 400
 
-        if extension in ("txt", "md", "py", "csv"):
-            file_text = uploaded.read().decode("utf-8", errors="replace")
+            if file_text.strip():
+                filenames.append(filename)
+                document_parts.append(
+                    f"\n\n--- START OF FILE: {filename} ---\n\n"
+                    f"{file_text}"
+                    f"\n\n--- END OF FILE: {filename} ---"
+                )
 
-        elif extension == "pdf":
-            reader = PdfReader(BytesIO(uploaded.read()))
-            file_text = "\n".join(
-                page.extract_text() or ""
-                for page in reader.pages
-            )
+        if not document_parts:
+            return "No readable text was found in the uploaded files.", 400
 
-        else:
-            return "Please upload a TXT, Markdown, Python, CSV, or PDF file.", 400
-
-        if not file_text.strip():
-            return "No readable text was found in this file.", 400
+        all_file_text = "\n".join(document_parts)
 
         response = client.chat.completions.create(
             model=MODEL,
@@ -52,15 +69,15 @@ def index():
                     "role": "system",
                     "content": (
                         "Create a concise, student-friendly MCQ quiz directly "
-                        "from the supplied document. Do not use extended reasoning."
+                        "from the supplied documents. Do not use extended reasoning."
                     ),
                 },
                 {
                     "role": "user",
                     "content": f"""
-Create 15 multiple-choice questions covering the entire document.
+Create 15 multiple-choice questions that cover all uploaded documents.
 
-For each question, use this format:
+For each question, use exactly this format:
 
 Question 1: ...
 A. ...
@@ -70,10 +87,10 @@ D. ...
 Answer: A
 Explanation: One short sentence.
 
-Filename: {filename}
+Uploaded files: {", ".join(filenames)}
 
-Document:
-{file_text}
+Documents:
+{all_file_text}
 """,
                 },
             ],
@@ -89,7 +106,5 @@ Document:
         answer = response.choices[0].message.content
 
     return render_template("index.html", answer=answer)
-
-
 if __name__ == "__main__":
     serve(app, host="0.0.0.0", port=5001)
