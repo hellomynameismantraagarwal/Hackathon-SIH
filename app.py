@@ -1,7 +1,6 @@
 import json
 import os
 from io import BytesIO
-
 import flask_bootstrap
 from flask import Flask, request, render_template
 from openai import OpenAI
@@ -10,7 +9,7 @@ from waitress import serve
 from werkzeug.utils import secure_filename
 
 
-# Read the API key
+
 with open('openrouterapikey.txt', 'r') as f:
     OPENROUTER_API_KEY = f.read().strip()
 
@@ -21,27 +20,20 @@ flask_bootstrap.Bootstrap(app)
 @app.route("/", methods=["GET", "POST"])
 def index():
     quiz = None
-
     if request.method == "POST":
         uploaded_files = request.files.getlist("file")
 
         if not uploaded_files or all(uploaded.filename == "" for uploaded in uploaded_files):
             return "Please choose one or more files.", 400
-
         document_parts = []
         filenames = []
-
         for uploaded in uploaded_files:
             if uploaded.filename == "":
                 continue
-
             filename = secure_filename(uploaded.filename)
-
             if "." not in filename:
                 return f"Unsupported file type: {filename}", 400
-
             extension = filename.rsplit(".", 1)[-1].lower()
-
             if extension in ("txt", "md", "py", "csv"):
                 file_text = uploaded.read().decode("utf-8", errors="replace")
             elif extension == "pdf":
@@ -149,6 +141,5 @@ def index():
     return render_template("index.html", quiz=quiz)
 
 
-#if __name__ == "__main__":
-#    serve(app, host="0.0.0.0", port=5001)
-app.run(debug=True)
+if __name__ == "__main__":
+    serve(app, host="0.0.0.0", port=5001)
