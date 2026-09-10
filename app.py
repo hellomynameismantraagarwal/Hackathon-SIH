@@ -1,22 +1,17 @@
 from io import BytesIO
-import json
-
-from flask import Flask, request, render_template
-from werkzeug.utils import secure_filename
-from openai import OpenAI
-from waitress import serve
+from flask import *
+from openrouter import OpenRouter
+import os
 from pypdf import PdfReader
+from waitress import serve
+from werkzeug.utils import secure_filename
 
+
+with open('openrouterapikey.txt', 'r') as f:
+  OPENROUTER_API_KEY = f.read().strip()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
-
-client = OpenAI(
-    base_url="http://localhost:1234/v1",
-    api_key="lm-studio",
-)
-
-MODEL = "prism-ml/bonsai-27b"
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -78,72 +73,58 @@ def index():
             )
 
         try:
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a quiz generator. "
-                            "Create concise, student-friendly MCQs "
-                            "ONLY from the supplied documents. "
-                            "Do not use outside knowledge."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-Create exactly 15 multiple-choice questions based on ALL
-uploaded documents.
+          with OpenRouter(
+                  api_key=os.getenv(OPENROUTER_API_KEY, ""),
+          ) as client:
+            response = client.chat.send(
+              model="meta-llama/llama-3.3-70b-instruct",
+              messages=[
+                {
+                  "role": "user",
+                  "content": f"""
+            Create exactly 15 multiple-choice questions based on ALL
+            uploaded documents.
 
-Return ONLY valid JSON.
+            Return ONLY valid JSON.
 
-Use exactly this structure:
+            Use exactly this structure:
 
-{{
-  "questions": [
-    {{
-      "question": "Question text",
-      "options": {{
-        "A": "Option A",
-        "B": "Option B",
-        "C": "Option C",
-        "D": "Option D"
-      }},
-      "answer": "A",
-      "explanation": "Short explanation"
-    }}
-  ]
-}}
+            {{
+              "questions": [
+                {{
+                  "question": "Question text",
+                  "options": {{
+                    "A": "Option A",
+                    "B": "Option B",
+                    "C": "Option C",
+                    "D": "Option D"
+                  }},
+                  "answer": "A",
+                  "explanation": "Short explanation"
+                }}
+              ]
+            }}
 
-Rules:
-- Exactly 15 questions.
-- Every question must have exactly 4 options.
-- The answer must be exactly one of: A, B, C, D.
-- Explanations should be short and student-friendly.
-- Questions must be based only on the uploaded documents.
-- Cover all uploaded documents as much as possible.
-- Do not include Markdown.
-- Do not include ```json.
-- Return ONLY the JSON object.
+            Rules:
+            - Exactly 15 questions.
+            - Every question must have exactly 4 options.
+            - The answer must be exactly one of: A, B, C, D.
+            - Explanations should be short and student-friendly.
+            - Questions must be based only on the uploaded documents.
+            - Cover all uploaded documents as much as possible.
+            - Do not include Markdown.
+            - Do not include ```json.
+            - Return ONLY the JSON object.
 
-Uploaded files:
-{", ".join(filenames)}
+            Uploaded files:
+            {", ".join(filenames)}
 
-Documents:
-{"".join(document_parts)}
-""",
-                    },
-                ],
-                temperature=0.2,
-                max_tokens=3000,
-                extra_body={
-                    "chat_template_kwargs": {
-                        "enable_thinking": False
-                    }
-                },
+            Documents:
+            {"".join(document_parts)}
+            """
+                }
+              ]
             )
-
             raw_answer = response.choices[0].message.content
 
             if not raw_answer:

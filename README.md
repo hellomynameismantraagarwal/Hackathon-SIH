@@ -1,1 +1,2 @@
-# Hackathon-SIH
+# Quiz Platform for SIH quiz
+

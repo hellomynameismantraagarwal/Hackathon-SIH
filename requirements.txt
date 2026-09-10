@@ -3,3 +3,4 @@ bootstrap-py
 waitress
 openai
 pypdf
+openrouter
