@@ -4,3 +4,6 @@ waitress
 openai
 pypdf
 openrouter
+WTForms
+flask_login
+flask_bootstrap

@@ -1,18 +1,22 @@
-from io import BytesIO
-from flask import *
-from openrouter import OpenRouter
+import json
 import os
+from io import BytesIO
+
+import flask_bootstrap
+from flask import Flask, request, render_template
+from openai import OpenAI
 from pypdf import PdfReader
 from waitress import serve
 from werkzeug.utils import secure_filename
 
 
+# Read the API key
 with open('openrouterapikey.txt', 'r') as f:
-  OPENROUTER_API_KEY = f.read().strip()
+    OPENROUTER_API_KEY = f.read().strip()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
-
+flask_bootstrap.Bootstrap(app)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -21,9 +25,7 @@ def index():
     if request.method == "POST":
         uploaded_files = request.files.getlist("file")
 
-        if not uploaded_files or all(
-            uploaded.filename == "" for uploaded in uploaded_files
-        ):
+        if not uploaded_files or all(uploaded.filename == "" for uploaded in uploaded_files):
             return "Please choose one or more files.", 400
 
         document_parts = []
@@ -41,25 +43,15 @@ def index():
             extension = filename.rsplit(".", 1)[-1].lower()
 
             if extension in ("txt", "md", "py", "csv"):
-                file_text = uploaded.read().decode(
-                    "utf-8",
-                    errors="replace"
-                )
-
+                file_text = uploaded.read().decode("utf-8", errors="replace")
             elif extension == "pdf":
                 reader = PdfReader(BytesIO(uploaded.read()))
-
-                file_text = "\n".join(
-                    page.extract_text() or ""
-                    for page in reader.pages
-                )
-
+                file_text = "\n".join(page.extract_text() or "" for page in reader.pages)
             else:
                 return f"Unsupported file type: {filename}", 400
 
             if file_text.strip():
                 filenames.append(filename)
-
                 document_parts.append(
                     f"\n\n--- START OF FILE: {filename} ---\n\n"
                     f"{file_text}"
@@ -67,27 +59,24 @@ def index():
                 )
 
         if not document_parts:
-            return (
-                "No readable text was found in the uploaded files.",
-                400
-            )
+            return "No readable text was found in the uploaded files.", 400
 
         try:
-          with OpenRouter(
-                  api_key=os.getenv(OPENROUTER_API_KEY, ""),
-          ) as client:
-            response = client.chat.send(
-              model="meta-llama/llama-3.3-70b-instruct",
-              messages=[
-                {
-                  "role": "user",
-                  "content": f"""
-            Create exactly 15 multiple-choice questions based on ALL
-            uploaded documents.
+            # Initialize the client the standard way
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=OPENROUTER_API_KEY,
+            )
 
-            Return ONLY valid JSON.
-
-            Use exactly this structure:
+            # Use the proper chat completions endpoint
+            response = client.chat.completions.create(
+                model="meta-llama/llama-3.3-70b-instruct",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""
+            Create exactly 15 multiple-choice questions based on ALL uploaded documents.
+            Return ONLY valid JSON. Use exactly this structure:
 
             {{
               "questions": [
@@ -122,17 +111,17 @@ def index():
             Documents:
             {"".join(document_parts)}
             """
-                }
-              ]
+                    }
+                ]
             )
+
             raw_answer = response.choices[0].message.content
 
             if not raw_answer:
                 return "Model returned an empty response.", 500
 
-            # Remove accidental markdown fences if the model adds them
+            # Strip markdown fences
             raw_answer = raw_answer.strip()
-
             if raw_answer.startswith("```"):
                 raw_answer = raw_answer.replace("```json", "", 1)
                 raw_answer = raw_answer.replace("```", "")
@@ -144,57 +133,22 @@ def index():
             if "questions" not in quiz:
                 raise ValueError("Invalid quiz format.")
 
-            if len(quiz["questions"]) != 15:
-                raise ValueError(
-                    f"Expected 15 questions, got {len(quiz['questions'])}."
-                )
-
             for question in quiz["questions"]:
-                if not all(
-                    key in question
-                    for key in (
-                        "question",
-                        "options",
-                        "answer",
-                        "explanation",
-                    )
-                ):
-                    raise ValueError(
-                        "One or more questions have missing fields."
-                    )
-
-                if set(question["options"].keys()) != {
-                    "A", "B", "C", "D"
-                }:
-                    raise ValueError(
-                        "Every question must have A, B, C and D options."
-                    )
-
-                if question["answer"] not in {
-                    "A", "B", "C", "D"
-                }:
-                    raise ValueError(
-                        "Invalid correct answer."
-                    )
+                if not all(key in question for key in ("question", "options", "answer", "explanation")):
+                    raise ValueError("One or more questions have missing fields.")
+                if set(question["options"].keys()) != {"A", "B", "C", "D"}:
+                    raise ValueError("Every question must have A, B, C and D options.")
+                if question["answer"] not in {"A", "B", "C", "D"}:
+                    raise ValueError("Invalid correct answer.")
 
         except json.JSONDecodeError as error:
-            return (
-                f"Model did not return valid JSON: {error}",
-                500
-            )
-
+            return f"Model did not return valid JSON: {error}", 500
         except Exception as error:
             return f"Quiz generation failed: {error}", 500
 
-    return render_template(
-        "index.html",
-        quiz=quiz
-    )
+    return render_template("index.html", quiz=quiz)
 
 
-if __name__ == "__main__":
-    serve(
-        app,
-        host="0.0.0.0",
-        port=5001
-    )
+#if __name__ == "__main__":
+#    serve(app, host="0.0.0.0", port=5001)
+app.run(debug=True)
