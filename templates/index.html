@@ -100,13 +100,12 @@
 
   <body class="py-5">
     <main class="container" style="max-width: 850px;">
-      <!-- HEADER -->
       <div class="text-center mb-4">
-        <h1 class="display-6 fw-bold mt-3 mb-2">PDF Quiz Generator</h1>
-        <p class="text-secondary mb-0">Upload a document and turn it into an interactive quiz.</p>
+        <span class="badge text-bg-primary rounded-pill px-3 py-2">
+          LearnItSmart: Better Approach To Learning
+        </span>
+        <h1 class="display-6 fw-bold mt-3 mb-2">Study Material to Quiz Generator</h1>
       </div>
-
-      <!-- UPLOAD CARD -->
       <section class="card app-card">
         <div class="card-body p-4 p-md-5">
           <form id="upload-form" method="post" enctype="multipart/form-data">
@@ -126,9 +125,7 @@
       </section>
 
       {% if quiz %}
-      <!-- QUIZ -->
       <section class="mt-4">
-        <!-- SCORE -->
         <div id="score-box" class="score-box">
           <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -173,8 +170,6 @@
           </div>
           {% endfor %}
         </div>
-
-        <!-- FINAL RESULT -->
         <div id="final-result" class="card app-card mt-4 d-none">
           <div class="card-body text-center p-5">
             <h2 class="fw-bold">Quiz Complete 🎉</h2>
