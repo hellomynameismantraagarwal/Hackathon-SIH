@@ -1,5 +1,4 @@
 import json
-import os
 from io import BytesIO
 import flask_bootstrap
 from flask import Flask, request, render_template
